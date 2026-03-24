@@ -95,9 +95,20 @@
 
         <section class="filter-shell" aria-label="Filtros de tarefas">
           <div class="filter-shell-header">
-            <span class="filter-shell-title">Filtrar tarefas</span>
+            <div class="filter-shell-copy">
+              <span class="filter-shell-title">Filtrar tarefas</span>
+              <p class="filter-shell-text">Busque rápido por nome, nota ou checklist e refine por prioridade ou tipo.</p>
+            </div>
             <button class="filter-reset-btn" id="clear-filters-btn" type="button" hidden>Limpar filtro</button>
           </div>
+          <label class="task-search" for="task-search-input">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.9"></circle>
+              <path d="M16 16L21 21" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"></path>
+            </svg>
+            <input id="task-search-input" type="search" placeholder="Pesquisar tarefa, nota ou checklist">
+            <button class="task-search-clear" id="clear-search-btn" type="button" hidden>Limpar</button>
+          </label>
           <div class="filter-chips" id="filter-chips"></div>
         </section>
       </section>

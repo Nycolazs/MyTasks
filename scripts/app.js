@@ -65,6 +65,8 @@ const emojiBtn = document.getElementById('emoji-btn');
 const emojiPicker = document.getElementById('emoji-picker');
 const filterChipsEl = document.getElementById('filter-chips');
 const clearFiltersBtn = document.getElementById('clear-filters-btn');
+const taskSearchInputEl = document.getElementById('task-search-input');
+const clearSearchBtn = document.getElementById('clear-search-btn');
 const ftb = document.getElementById('floating-toolbar');
 const colorPopup = document.getElementById('color-popup');
 const doneCountEl = document.getElementById('done-count');
@@ -85,7 +87,7 @@ const headerUserEmailEl = document.getElementById('header-user-email');
 
 function createDefaultState() {
   return {
-    schemaVersion: 8,
+    schemaVersion: 9,
     pageTitle: 'Minhas Tarefas',
     emoji: '📝',
     items: [],
@@ -112,6 +114,15 @@ let currentUser = null;
 let boardDocRef = null;
 let cloudSaveSeq = 0;
 let applyingRemoteState = false;
+let taskSearchQuery = '';
+let pendingFilterAnimation = '';
+
+const TASK_TIME_FORMATTER = new Intl.DateTimeFormat('pt-BR', {
+  day: '2-digit',
+  month: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit'
+});
 
 const THEME_ICONS = {
   light: (
@@ -210,8 +221,7 @@ function persistColorModePreference(mode) {
 }
 
 function canAnimateThemeTransition() {
-  return typeof document.startViewTransition === 'function'
-    && typeof window.matchMedia === 'function'
+  return typeof window.matchMedia === 'function'
     && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
@@ -230,6 +240,20 @@ function normalizeTaskType(taskType) {
 
 function normalizeFilter(filter) {
   return FILTER_OPTIONS.some(option => option.value === filter) ? filter : 'all';
+}
+
+function normalizeSearchQuery(query) {
+  return typeof query === 'string' ? query.trim().toLowerCase() : '';
+}
+
+function normalizeTimestamp(value, fallback = Date.now()) {
+  const parsed = Number(value || 0);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  const fallbackParsed = Number(fallback || 0);
+  return Number.isFinite(fallbackParsed) && fallbackParsed > 0 ? fallbackParsed : Date.now();
 }
 
 function normalizeSettings(raw) {
@@ -269,6 +293,32 @@ function commitColorMode(mode, persistToState = true) {
   applyAppearance();
 }
 
+function runThemeBloom(sourceButton, nextMode) {
+  if (!sourceButton || !canAnimateThemeTransition()) return;
+
+  const rect = sourceButton.getBoundingClientRect();
+  const originX = rect.left + (rect.width / 2);
+  const originY = rect.top + (rect.height / 2);
+  const size = Math.hypot(window.innerWidth, window.innerHeight) * 1.25;
+  const bloom = document.createElement('span');
+
+  bloom.className = 'theme-bloom theme-bloom-' + nextMode;
+  bloom.style.width = size + 'px';
+  bloom.style.height = size + 'px';
+  bloom.style.left = (originX - (size / 2)) + 'px';
+  bloom.style.top = (originY - (size / 2)) + 'px';
+
+  document.body.appendChild(bloom);
+
+  requestAnimationFrame(() => {
+    bloom.classList.add('is-active');
+  });
+
+  window.setTimeout(() => {
+    bloom.remove();
+  }, 620);
+}
+
 function animateThemeToggleButton(button) {
   if (!button) return;
   button.classList.remove('is-switching');
@@ -285,40 +335,8 @@ function toggleColorMode(sourceButton = null) {
 
   animateThemeToggleButton(sourceButton);
 
-  if (!canAnimateThemeTransition() || !sourceButton) {
-    commitColorMode(nextMode);
-    if (currentUser) markDirty();
-    return;
-  }
-
-  const rect = sourceButton.getBoundingClientRect();
-  const originX = rect.left + (rect.width / 2);
-  const originY = rect.top + (rect.height / 2);
-  const endRadius = Math.hypot(
-    Math.max(originX, window.innerWidth - originX),
-    Math.max(originY, window.innerHeight - originY)
-  );
-
-  const transition = document.startViewTransition(() => {
-    commitColorMode(nextMode);
-  });
-
-  transition.ready.then(() => {
-    document.documentElement.animate(
-      {
-        clipPath: [
-          'circle(0px at ' + originX + 'px ' + originY + 'px)',
-          'circle(' + endRadius + 'px at ' + originX + 'px ' + originY + 'px)'
-        ],
-        filter: ['brightness(1.02)', 'brightness(1)']
-      },
-      {
-        duration: 650,
-        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-        pseudoElement: '::view-transition-new(root)'
-      }
-    );
-  }).catch(() => {});
+  commitColorMode(nextMode);
+  runThemeBloom(sourceButton, nextMode);
 
   if (currentUser) markDirty();
 }
@@ -383,7 +401,7 @@ function buildPersistedPayload() {
   const updatedAt = Date.now();
   state.updatedAt = updatedAt;
   return {
-    schemaVersion: 8,
+    schemaVersion: 9,
     pageTitle: normalizePageTitle(state.pageTitle),
     emoji: state.emoji,
     items: state.items,
@@ -574,6 +592,7 @@ async function initFirebase() {
     auth.onAuthStateChanged(async user => {
       currentUser = user;
       boardDocRef = user ? db.collection('users').doc(user.uid).collection('boards').doc(getBoardId()) : null;
+      taskSearchQuery = '';
       state = user ? loadState(user) : createDefaultState();
       render();
       autoResize(pageTitleEl);
@@ -726,7 +745,7 @@ function readStoredState(key) {
 
 function normalizeState(raw) {
   return {
-    schemaVersion: 8,
+    schemaVersion: 9,
     pageTitle: normalizePageTitle(raw?.pageTitle),
     emoji: typeof raw?.emoji === 'string' ? raw.emoji : createDefaultState().emoji,
     items: normalizeTopItems(Array.isArray(raw?.items) ? raw.items : []),
@@ -762,12 +781,17 @@ function normalizeItem(item, allowRich) {
     };
   }
 
+  const createdAt = normalizeTimestamp(item.createdAt, item.updatedAt || Date.now());
+  const updatedAt = normalizeTimestamp(item.updatedAt, createdAt);
+
   return {
     id: typeof item.id === 'string' ? item.id : uid(),
     type: 'task',
     title: typeof item.title === 'string' ? item.title : '',
     note: typeof item.note === 'string' ? item.note : '',
     taskType: normalizeTaskType(item.taskType),
+    createdAt,
+    updatedAt,
     done: Boolean(item.done),
     priority: normalizePriority(item.priority),
     subitems: Array.isArray(item.subitems) ? item.subitems.map(normalizeSubitem).filter(Boolean) : [],
@@ -786,12 +810,17 @@ function normalizeSubitem(sub) {
 }
 
 function createTask(seed = {}) {
+  const createdAt = normalizeTimestamp(seed.createdAt, Date.now());
+  const updatedAt = normalizeTimestamp(seed.updatedAt, createdAt);
+
   return {
     id: uid(),
     type: 'task',
     title: '',
     note: '',
     taskType: normalizeTaskType(seed.taskType),
+    createdAt,
+    updatedAt,
     done: Boolean(seed.done),
     priority: normalizePriority(seed.priority),
     subitems: [],
@@ -876,13 +905,24 @@ function findTaskNode(taskId, items = state.items, parentTask = null) {
 }
 
 function setTaskDoneRecursive(task, value) {
+  const timestamp = Date.now();
+  setTaskDoneRecursiveWithTimestamp(task, value, timestamp);
+}
+
+function setTaskDoneRecursiveWithTimestamp(task, value, timestamp) {
   task.done = value;
+  touchTask(task, timestamp);
   task.subitems.forEach(sub => {
     sub.done = value;
   });
   task.children.forEach(child => {
-    setTaskDoneRecursive(child, value);
+    setTaskDoneRecursiveWithTimestamp(child, value, timestamp);
   });
+}
+
+function touchTask(task, timestamp = Date.now()) {
+  task.createdAt = normalizeTimestamp(task.createdAt, timestamp);
+  task.updatedAt = normalizeTimestamp(timestamp, Date.now());
 }
 
 function insertIntoList(list, item, afterId = null) {
@@ -908,6 +948,7 @@ function addTask(afterId = null, parentTaskId = null) {
     const parentNode = findTaskNode(parentTaskId);
     if (!parentNode) return;
     insertIntoList(parentNode.task.children, task, afterId);
+    touchTask(parentNode.task, task.createdAt);
   }
 
   markDirty();
@@ -935,6 +976,9 @@ function removeTask(taskId) {
   const node = findTaskNode(taskId);
   if (!node) return;
   node.list.splice(node.index, 1);
+  if (node.parentTask) {
+    touchTask(node.parentTask);
+  }
   markDirty();
   render();
 }
@@ -945,6 +989,7 @@ function addSubitem(taskId, afterSubId = null) {
 
   const sub = { id: uid(), text: '', done: false };
   insertIntoList(node.task.subitems, sub, afterSubId);
+  touchTask(node.task);
   markDirty();
   render({ selector: '[data-sub-id="' + sub.id + '"] input' });
 }
@@ -953,6 +998,7 @@ function removeSubitem(taskId, subId) {
   const node = findTaskNode(taskId);
   if (!node) return;
   node.task.subitems = node.task.subitems.filter(sub => sub.id !== subId);
+  touchTask(node.task);
   markDirty();
   render();
 }
@@ -967,12 +1013,28 @@ function makeIconButton({ title, className = 'ba-btn', onClick, svg }) {
   return btn;
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function setActiveFilter(filterValue) {
   const normalizedFilter = normalizeFilter(filterValue);
   if (normalizedFilter === state.settings.activeFilter) return;
   state.settings.activeFilter = normalizedFilter;
   render();
   markDirty();
+}
+
+function setTaskSearchQuery(query) {
+  const nextQuery = typeof query === 'string' ? query : '';
+  if (nextQuery === taskSearchQuery) return;
+  taskSearchQuery = nextQuery;
+  render();
 }
 
 function renderFilterChips() {
@@ -999,14 +1061,44 @@ function renderFilterChips() {
     chip.appendChild(label);
 
     chip.addEventListener('click', () => {
+      if (option.value === activeFilter) {
+        chip.classList.remove('is-activating');
+        void chip.offsetWidth;
+        chip.classList.add('is-activating');
+        window.setTimeout(() => {
+          chip.classList.remove('is-activating');
+        }, 460);
+        return;
+      }
+
+      pendingFilterAnimation = option.value;
       setActiveFilter(option.value);
     });
 
     filterChipsEl.appendChild(chip);
+
+    if (option.value === pendingFilterAnimation && option.value === activeFilter) {
+      requestAnimationFrame(() => {
+        chip.classList.add('is-activating');
+        window.setTimeout(() => {
+          chip.classList.remove('is-activating');
+        }, 460);
+      });
+    }
   });
+
+  pendingFilterAnimation = '';
 
   if (clearFiltersBtn) {
     clearFiltersBtn.hidden = activeFilter === 'all';
+  }
+
+  if (taskSearchInputEl) {
+    taskSearchInputEl.value = taskSearchQuery;
+  }
+
+  if (clearSearchBtn) {
+    clearSearchBtn.hidden = !normalizeSearchQuery(taskSearchQuery);
   }
 }
 
@@ -1016,6 +1108,8 @@ function updateMeta(renderableItems = state.items) {
   const percent = total ? Math.round((done / total) * 100) : 0;
   const activeFilter = normalizeFilter(state.settings?.activeFilter);
   const activeFilterMeta = getFilterOptionMeta(activeFilter);
+  const normalizedSearch = normalizeSearchQuery(taskSearchQuery);
+  const searchLabel = taskSearchQuery.trim();
 
   doneCountEl.textContent = done;
   headerSubEl.textContent = total + (total === 1 ? ' tarefa' : ' tarefas');
@@ -1024,6 +1118,14 @@ function updateMeta(renderableItems = state.items) {
   emptyStateEl.style.display = renderableItems.length ? 'none' : 'block';
 
   if (!emptyStateTextEl) return;
+
+  if (normalizedSearch) {
+    const safeQuery = escapeHtml(searchLabel);
+    emptyStateTextEl.innerHTML = activeFilter === 'all'
+      ? 'Nenhuma tarefa encontrada para <strong>"' + safeQuery + '"</strong>.<br>Tente outro termo de busca.'
+      : 'Nenhuma tarefa encontrada para <strong>"' + safeQuery + '"</strong> em <strong>' + activeFilterMeta.label + '</strong>.<br>Troque o filtro ou tente outra busca.';
+    return;
+  }
 
   emptyStateTextEl.innerHTML = activeFilter === 'all'
     ? 'Nenhuma tarefa ainda.<br>Crie sua primeira prioridade abaixo.'
@@ -1092,6 +1194,9 @@ function moveTopLevelItem(sourceId, targetId) {
   const [moved] = state.items.splice(sourceIndex, 1);
   const adjustedTarget = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
   state.items.splice(adjustedTarget, 0, moved);
+  if (moved?.type === 'task') {
+    touchTask(moved);
+  }
   markDirty();
   render();
 }
@@ -1108,6 +1213,8 @@ function moveChildTaskWithinParent(parentTaskId, sourceId, targetId) {
   const [moved] = list.splice(sourceIndex, 1);
   const adjustedTarget = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
   list.splice(adjustedTarget, 0, moved);
+  touchTask(parentNode.task);
+  touchTask(moved);
   markDirty();
   render();
 }
@@ -1115,6 +1222,24 @@ function moveChildTaskWithinParent(parentTaskId, sourceId, targetId) {
 function getTaskVisualState(task) {
   if (task.done) return 'done';
   return normalizePriority(task.priority);
+}
+
+function taskMatchesSearch(task, searchQuery = taskSearchQuery) {
+  const normalizedSearch = normalizeSearchQuery(searchQuery);
+
+  if (!normalizedSearch) return true;
+
+  const searchable = [
+    task.title,
+    task.note,
+    TASK_TYPES[normalizeTaskType(task.taskType)]?.label,
+    ...(Array.isArray(task.subitems) ? task.subitems.map(sub => sub.text) : [])
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return searchable.includes(normalizedSearch);
 }
 
 function taskMatchesActiveFilter(task, filterValue = state.settings?.activeFilter) {
@@ -1129,12 +1254,14 @@ function taskMatchesActiveFilter(task, filterValue = state.settings?.activeFilte
   return normalizeTaskType(task.taskType) === activeFilter;
 }
 
-function filterTaskTree(task, filterValue = state.settings?.activeFilter) {
+function filterTaskTree(task, filterValue = state.settings?.activeFilter, searchQuery = taskSearchQuery) {
   const visibleChildren = task.children
-    .map(child => filterTaskTree(child, filterValue))
+    .map(child => filterTaskTree(child, filterValue, searchQuery))
     .filter(Boolean);
 
-  if (!taskMatchesActiveFilter(task, filterValue) && !visibleChildren.length) {
+  const matchesSelf = taskMatchesActiveFilter(task, filterValue) && taskMatchesSearch(task, searchQuery);
+
+  if (!matchesSelf && !visibleChildren.length) {
     return null;
   }
 
@@ -1153,8 +1280,9 @@ function buildTaskTree(task) {
 
 function getRenderableItems() {
   const activeFilter = normalizeFilter(state.settings?.activeFilter);
+  const normalizedSearch = normalizeSearchQuery(taskSearchQuery);
 
-  if (activeFilter === 'all') {
+  if (activeFilter === 'all' && !normalizedSearch) {
     return state.items.map(item => {
       if (item.type === 'task') {
         return {
@@ -1173,7 +1301,7 @@ function getRenderableItems() {
   return state.items
     .map(item => {
       if (item.type !== 'task') return null;
-      const node = filterTaskTree(item, activeFilter);
+      const node = filterTaskTree(item, activeFilter, normalizedSearch);
       return node
         ? {
             kind: 'task',
@@ -1192,6 +1320,10 @@ function countVisibleDescendants(node) {
   return total;
 }
 
+function formatTaskTimestamp(timestamp) {
+  return TASK_TIME_FORMATTER.format(new Date(normalizeTimestamp(timestamp)));
+}
+
 function getTaskStatusText(task) {
   const visualState = getTaskVisualState(task);
   if (visualState === 'done') return 'Resolvida';
@@ -1200,7 +1332,7 @@ function getTaskStatusText(task) {
   return 'Sem prioridade';
 }
 
-function buildSubitems(task) {
+function buildSubitems(task, onTaskTouch = null) {
   const fragment = document.createDocumentFragment();
 
   if (task.subitems.length) {
@@ -1217,6 +1349,8 @@ function buildSubitems(task) {
       subCheck.innerHTML = '<svg width="8" height="8" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1.5,6 5,9.5 10.5,2.5"/></svg>';
       subCheck.addEventListener('click', () => {
         sub.done = !sub.done;
+        touchTask(task);
+        onTaskTouch?.();
         markDirty();
         render();
       });
@@ -1228,6 +1362,8 @@ function buildSubitems(task) {
       subInput.value = sub.text || '';
       subInput.addEventListener('input', event => {
         sub.text = event.target.value;
+        touchTask(task);
+        onTaskTouch?.();
         markDirty();
       });
       subInput.addEventListener('keydown', event => {
@@ -1341,6 +1477,7 @@ function buildTaskElement(node, options = {}) {
   taskTypeSelect.value = normalizedTaskType;
   taskTypeSelect.addEventListener('change', event => {
     task.taskType = normalizeTaskType(event.target.value);
+    touchTask(task);
     markDirty();
     render();
   });
@@ -1375,6 +1512,7 @@ function buildTaskElement(node, options = {}) {
     dot.setAttribute('aria-label', option.title);
     dot.addEventListener('click', () => {
       task.priority = option.value;
+      touchTask(task);
       markDirty();
       render();
     });
@@ -1397,6 +1535,8 @@ function buildTaskElement(node, options = {}) {
   titleInput.value = task.title || '';
   titleInput.addEventListener('input', event => {
     task.title = event.target.value;
+    touchTask(task);
+    refreshTaskTimestamps();
     markDirty();
   });
   titleInput.addEventListener('keydown', event => {
@@ -1415,10 +1555,30 @@ function buildTaskElement(node, options = {}) {
   noteInput.value = task.note || '';
   noteInput.addEventListener('input', event => {
     task.note = event.target.value;
+    touchTask(task);
+    refreshTaskTimestamps();
     autoResize(noteInput);
     markDirty();
   });
   body.appendChild(noteInput);
+
+  const timestamps = document.createElement('div');
+  timestamps.className = 'task-timestamps';
+
+  const createdBadge = document.createElement('span');
+  createdBadge.className = 'task-time-pill';
+
+  const updatedBadge = document.createElement('span');
+  updatedBadge.className = 'task-time-pill';
+ 
+  const refreshTaskTimestamps = () => {
+    createdBadge.textContent = 'Criada em ' + formatTaskTimestamp(task.createdAt);
+    updatedBadge.textContent = 'Editada em ' + formatTaskTimestamp(task.updatedAt);
+  };
+
+  refreshTaskTimestamps();
+  timestamps.append(createdBadge, updatedBadge);
+  body.appendChild(timestamps);
 
   const actions = document.createElement('div');
   actions.className = 'block-actions';
@@ -1445,7 +1605,7 @@ function buildTaskElement(node, options = {}) {
   body.appendChild(actions);
   header.appendChild(body);
   block.appendChild(header);
-  block.appendChild(buildSubitems(task));
+  block.appendChild(buildSubitems(task, refreshTaskTimestamps));
 
   const addChildBtn = document.createElement('button');
   addChildBtn.type = 'button';
@@ -1813,6 +1973,26 @@ function initEvents() {
   if (clearFiltersBtn) {
     clearFiltersBtn.addEventListener('click', () => {
       setActiveFilter('all');
+    });
+  }
+
+  if (taskSearchInputEl) {
+    taskSearchInputEl.addEventListener('input', event => {
+      setTaskSearchQuery(event.target.value);
+    });
+
+    taskSearchInputEl.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setTaskSearchQuery('');
+      }
+    });
+  }
+
+  if (clearSearchBtn) {
+    clearSearchBtn.addEventListener('click', () => {
+      setTaskSearchQuery('');
+      taskSearchInputEl?.focus();
     });
   }
 
