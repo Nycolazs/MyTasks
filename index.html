@@ -16,6 +16,7 @@
     })();
   </script>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&amp;family=Manrope:wght@400;500;600;700&amp;family=Merriweather:wght@400;700&amp;family=Source+Sans+3:wght@400;600;700&amp;family=Space+Grotesk:wght@400;500;700&amp;display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="./assets/mytasks-mark.svg">
   <link rel="stylesheet" href="./styles/main.css">
 </head>
 <body>
@@ -23,12 +24,14 @@
     <button class="theme-toggle global-theme-toggle" id="login-theme-toggle" type="button" aria-label="Alternar tema" title="Alternar tema"></button>
     <div class="login-shell">
       <div class="login-card login-card-minimal">
-        <span class="login-badge">MyTasks</span>
+        <div class="login-brand">
+          <img class="login-brand-mark" src="./assets/mytasks-mark.svg" alt="MyTasks">
+          <span class="login-badge">MyTasks</span>
+        </div>
         <h1>Entre para acessar seu painel.</h1>
         <p class="login-copy">Organize suas tarefas com uma interface mais limpa, sincronização no Firebase e acesso pela sua conta Google.</p>
         <p class="login-status" id="login-status">Verificando a configuração do Firebase para liberar o acesso.</p>
         <button class="login-google-btn" id="google-login-btn" type="button">Entrar com Google</button>
-        <p class="login-help" id="login-help">No GitHub Pages, autorize o seu domínio em Firebase Authentication para o login funcionar.</p>
       </div>
     </div>
   </section>
@@ -36,7 +39,9 @@
   <div class="app-root" id="app-root" hidden>
     <header class="header">
       <div class="header-brand">
-        <span class="brand-icon">◎</span>
+        <span class="brand-icon">
+          <img class="brand-icon-mark" src="./assets/mytasks-mark.svg" alt="MyTasks">
+        </span>
         <div class="brand-copy">
           <span class="brand-kicker">Workspace sincronizado</span>
           <div class="brand-title-row">

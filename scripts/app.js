@@ -39,7 +39,6 @@ const LEGACY_STORAGE_KEYS = ['minhas-tarefas-v3', 'minhas-tarefas-v2'];
 const loginScreenEl = document.getElementById('login-screen');
 const appRootEl = document.getElementById('app-root');
 const loginStatusEl = document.getElementById('login-status');
-const loginHelpEl = document.getElementById('login-help');
 const blocksEl = document.getElementById('blocks');
 const emptyStateEl = document.getElementById('empty-state');
 const pageTitleEl = document.getElementById('page-title');
@@ -429,7 +428,6 @@ function updateAuthUI() {
     googleLoginBtn.textContent = 'Configurar Firebase';
     googleLogoutBtn.hidden = true;
     loginStatusEl.textContent = 'Edite o arquivo scripts/firebase-config.js para ativar o login com Google.';
-    loginHelpEl.textContent = 'Depois, autorize o domínio "' + location.host + '" em Firebase Authentication > Settings > Authorized domains.';
     setSaveStatus('Configure o Firebase');
     setCloudStatus('Firebase não configurado.');
     return;
@@ -437,7 +435,6 @@ function updateAuthUI() {
 
   googleLoginBtn.disabled = false;
   googleLoginBtn.textContent = 'Entrar com Google';
-  loginHelpEl.textContent = 'No GitHub Pages, autorize o domínio "' + location.host + '" em Firebase Authentication > Settings.';
 
   if (currentUser) {
     setAuthenticatedView(true);
@@ -494,7 +491,6 @@ async function initFirebase() {
     console.error('Falha ao iniciar Firebase:', error);
     firebaseReady = false;
     loginStatusEl.textContent = 'Não foi possível iniciar o Firebase com a configuração atual.';
-    loginHelpEl.textContent = 'Revise scripts/firebase-config.js e as permissões do projeto no console do Firebase.';
     setSaveStatus('Erro de inicialização');
     setCloudStatus('Não foi possível iniciar o Firebase.');
   }
