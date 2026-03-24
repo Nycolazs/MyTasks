@@ -1056,6 +1056,7 @@ function buildSubitems(task) {
 
       const subInput = document.createElement('input');
       subInput.className = 'subitem-input' + (sub.done ? ' checked-text' : '');
+      subInput.spellcheck = false;
       subInput.placeholder = 'Checklist rápido…';
       subInput.value = sub.text || '';
       subInput.addEventListener('input', event => {
@@ -1195,6 +1196,7 @@ function buildTaskElement(task, options = {}) {
   const titleInput = document.createElement('input');
   titleInput.className = 'block-title-input';
   titleInput.type = 'text';
+  titleInput.spellcheck = false;
   titleInput.placeholder = parentTask ? 'Título da tarefa filha…' : 'Título da tarefa pai…';
   titleInput.value = task.title || '';
   titleInput.addEventListener('input', event => {
@@ -1212,6 +1214,7 @@ function buildTaskElement(task, options = {}) {
   const noteInput = document.createElement('textarea');
   noteInput.className = 'block-note-input';
   noteInput.rows = 1;
+  noteInput.spellcheck = false;
   noteInput.placeholder = 'Adicione uma nota…';
   noteInput.value = task.note || '';
   noteInput.addEventListener('input', event => {
@@ -1332,6 +1335,7 @@ function buildRichElement(item) {
   const rich = document.createElement('div');
   rich.className = 'rich-block';
   rich.contentEditable = 'true';
+  rich.spellcheck = false;
   rich.dataset.placeholder = 'Escreva aqui com formatação livre…';
   rich.dataset.richId = item.id;
   rich.innerHTML = item.html || '';
