@@ -183,6 +183,12 @@ function persistColorModePreference(mode) {
   } catch {}
 }
 
+function canAnimateThemeTransition() {
+  return typeof document.startViewTransition === 'function'
+    && typeof window.matchMedia === 'function'
+    && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 function getFontTheme(themeId = state.settings?.fontTheme) {
   return FONT_THEMES[themeId] || FONT_THEMES[DEFAULT_FONT_THEME];
 }
@@ -218,6 +224,68 @@ function applyAppearance() {
     button.setAttribute('aria-label', themeLabel);
     button.setAttribute('title', themeLabel);
   });
+}
+
+function commitColorMode(mode, persistToState = true) {
+  const normalizedMode = normalizeColorMode(mode);
+  if (persistToState) {
+    state.settings.colorMode = normalizedMode;
+  }
+  applyAppearance();
+}
+
+function animateThemeToggleButton(button) {
+  if (!button) return;
+  button.classList.remove('is-switching');
+  void button.offsetWidth;
+  button.classList.add('is-switching');
+  window.setTimeout(() => {
+    button.classList.remove('is-switching');
+  }, 720);
+}
+
+function toggleColorMode(sourceButton = null) {
+  const currentMode = normalizeColorMode(state.settings?.colorMode);
+  const nextMode = currentMode === 'dark' ? 'light' : 'dark';
+
+  animateThemeToggleButton(sourceButton);
+
+  if (!canAnimateThemeTransition() || !sourceButton) {
+    commitColorMode(nextMode);
+    if (currentUser) markDirty();
+    return;
+  }
+
+  const rect = sourceButton.getBoundingClientRect();
+  const originX = rect.left + (rect.width / 2);
+  const originY = rect.top + (rect.height / 2);
+  const endRadius = Math.hypot(
+    Math.max(originX, window.innerWidth - originX),
+    Math.max(originY, window.innerHeight - originY)
+  );
+
+  const transition = document.startViewTransition(() => {
+    commitColorMode(nextMode);
+  });
+
+  transition.ready.then(() => {
+    document.documentElement.animate(
+      {
+        clipPath: [
+          'circle(0px at ' + originX + 'px ' + originY + 'px)',
+          'circle(' + endRadius + 'px at ' + originX + 'px ' + originY + 'px)'
+        ],
+        filter: ['brightness(1.02)', 'brightness(1)']
+      },
+      {
+        duration: 650,
+        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+        pseudoElement: '::view-transition-new(root)'
+      }
+    );
+  }).catch(() => {});
+
+  if (currentUser) markDirty();
 }
 
 function populateFontThemes() {
@@ -1534,12 +1602,8 @@ function initEvents() {
   });
 
   [loginThemeToggleBtn, appThemeToggleBtn].filter(Boolean).forEach(button => {
-    button.addEventListener('click', () => {
-      state.settings.colorMode = normalizeColorMode(state.settings.colorMode) === 'dark' ? 'light' : 'dark';
-      applyAppearance();
-      if (currentUser) {
-        markDirty();
-      }
+    button.addEventListener('click', event => {
+      toggleColorMode(event.currentTarget);
     });
   });
 
