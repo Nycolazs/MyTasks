@@ -218,6 +218,40 @@ function isFirebaseConfigured() {
     && !isPlaceholderValue(FIREBASE_CONFIG.appId);
 }
 
+function getFirebaseErrorCode(error) {
+  return String(error?.code || error?.status || '').toLowerCase();
+}
+
+function getCloudErrorMessage(error, action = 'sync') {
+  const code = getFirebaseErrorCode(error);
+
+  if (code.includes('permission-denied')) {
+    return 'Firestore bloqueou o acesso. Revise as regras do projeto.';
+  }
+
+  if (code.includes('failed-precondition')) {
+    return 'Firestore ainda nao esta pronto neste projeto.';
+  }
+
+  if (code.includes('unauthenticated')) {
+    return 'Sua sessao expirou. Entre novamente com Google.';
+  }
+
+  if (code.includes('unavailable')) {
+    return 'Firebase indisponivel no momento. Tentaremos novamente.';
+  }
+
+  if (code.includes('not-found')) {
+    return 'Nao encontramos o Firestore deste projeto.';
+  }
+
+  if (action === 'save') {
+    return 'Nao foi possivel enviar agora. As alteracoes continuam guardadas neste navegador.';
+  }
+
+  return 'Nao foi possivel sincronizar agora. Revise o Firestore e tente novamente.';
+}
+
 function buildPersistedPayload() {
   const updatedAt = Date.now();
   state.updatedAt = updatedAt;
@@ -259,7 +293,7 @@ async function saveToCloud(payload) {
   } catch (error) {
     console.error('Falha ao salvar no Firebase:', error);
     setSaveStatus('Salvo em cache');
-    setCloudStatus('Não foi possível enviar agora. As alterações continuam guardadas neste navegador.');
+    setCloudStatus(getCloudErrorMessage(error, 'save'));
   }
 }
 
@@ -295,7 +329,7 @@ async function syncCloudState() {
     setCloudStatus('Dados sincronizados com Firebase.');
   } catch (error) {
     console.error('Falha ao sincronizar com o Firebase:', error);
-    setCloudStatus('Não foi possível sincronizar agora. Tentaremos novamente quando houver conexão.');
+    setCloudStatus(getCloudErrorMessage(error, 'sync'));
   }
 }
 
@@ -428,6 +462,7 @@ async function initFirebase() {
           await syncUserProfile(user);
         } catch (error) {
           console.warn('Não foi possível atualizar o perfil do usuário no Firestore:', error);
+          setCloudStatus(getCloudErrorMessage(error, 'save'));
         }
 
         await syncCloudState();

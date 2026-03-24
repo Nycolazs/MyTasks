@@ -18,6 +18,17 @@ Aplicacao de tarefas com login Google, sincronizacao no Firebase e interface oti
 3. Ative o provedor Google em `Authentication`
 4. Adicione `nycolazs.github.io` em `Authentication > Settings > Authorized domains`
 
+### Regras do Firestore
+
+Se o app mostrar mensagem de sincronizacao bloqueada depois do login, o mais comum e o Firestore estar negando acesso pelas rules.
+
+No Firebase Console, abra `Firestore Database > Rules` e cole o conteudo de `firestore.rules`.
+
+Essas regras deixam cada usuario ler e gravar apenas:
+
+- `users/{uid}`
+- `users/{uid}/boards/{boardId}`
+
 ### Publicacao segura no GitHub
 
 Para nao deixar a configuracao real salva no repositorio, o deploy usa GitHub Actions Secrets.
