@@ -187,6 +187,11 @@ function getFontTheme(themeId = state.settings?.fontTheme) {
   return FONT_THEMES[themeId] || FONT_THEMES[DEFAULT_FONT_THEME];
 }
 
+function normalizePageTitle(value) {
+  if (typeof value !== 'string') return createDefaultState().pageTitle;
+  return value.trim() ? value : createDefaultState().pageTitle;
+}
+
 function normalizeSettings(raw) {
   return {
     fontTheme: FONT_THEMES[raw?.fontTheme] ? raw.fontTheme : DEFAULT_FONT_THEME,
@@ -276,7 +281,7 @@ function buildPersistedPayload() {
   state.updatedAt = updatedAt;
   return {
     schemaVersion: 7,
-    pageTitle: state.pageTitle,
+    pageTitle: normalizePageTitle(state.pageTitle),
     emoji: state.emoji,
     items: state.items,
     settings: deepClone(state.settings),
@@ -619,7 +624,7 @@ function readStoredState(key) {
 function normalizeState(raw) {
   return {
     schemaVersion: 7,
-    pageTitle: typeof raw?.pageTitle === 'string' ? raw.pageTitle : createDefaultState().pageTitle,
+    pageTitle: normalizePageTitle(raw?.pageTitle),
     emoji: typeof raw?.emoji === 'string' ? raw.emoji : createDefaultState().emoji,
     items: normalizeTopItems(Array.isArray(raw?.items) ? raw.items : []),
     settings: normalizeSettings(raw?.settings),
@@ -1288,6 +1293,7 @@ function render(focusTarget = null) {
     }
   });
 
+  state.pageTitle = normalizePageTitle(state.pageTitle);
   pageTitleEl.value = state.pageTitle;
   emojiBtn.textContent = state.emoji;
   autoResize(pageTitleEl);
@@ -1539,6 +1545,15 @@ function initEvents() {
 
   pageTitleEl.addEventListener('input', () => {
     state.pageTitle = pageTitleEl.value;
+    autoResize(pageTitleEl);
+    markDirty();
+  });
+
+  pageTitleEl.addEventListener('blur', () => {
+    const normalizedTitle = normalizePageTitle(pageTitleEl.value);
+    if (normalizedTitle === state.pageTitle) return;
+    state.pageTitle = normalizedTitle;
+    pageTitleEl.value = normalizedTitle;
     autoResize(pageTitleEl);
     markDirty();
   });
