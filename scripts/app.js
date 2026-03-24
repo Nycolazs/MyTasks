@@ -163,6 +163,12 @@ function setCloudStatus(text) {
 function setAuthenticatedView(isAuthenticated) {
   loginScreenEl.hidden = isAuthenticated;
   appRootEl.hidden = !isAuthenticated;
+
+  if (isAuthenticated) {
+    requestAnimationFrame(() => {
+      autoResize(pageTitleEl);
+    });
+  }
 }
 
 function normalizeColorMode(mode) {
