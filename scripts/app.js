@@ -94,6 +94,20 @@ let boardDocRef = null;
 let cloudSaveSeq = 0;
 let applyingRemoteState = false;
 
+const THEME_ICONS = {
+  light: (
+    '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<circle cx="12" cy="12" r="4.2" stroke-width="1.8"></circle>' +
+    '<path d="M12 2.75V5.1M12 18.9v2.35M21.25 12H18.9M5.1 12H2.75M18.54 5.46l-1.66 1.66M7.12 16.88l-1.66 1.66M18.54 18.54l-1.66-1.66M7.12 7.12 5.46 5.46" stroke-width="1.8" stroke-linecap="round"></path>' +
+    '</svg>'
+  ),
+  dark: (
+    '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<path d="M20.2 14.2A8.2 8.2 0 1 1 9.8 3.8a7 7 0 1 0 10.4 10.4Z" stroke-width="1.8" stroke-linejoin="round"></path>' +
+    '</svg>'
+  )
+};
+
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -191,9 +205,15 @@ function applyAppearance() {
   fontThemeSelectEl.value = themeId;
   persistColorModePreference(colorMode);
 
-  const themeLabel = colorMode === 'dark' ? 'Modo claro' : 'Modo escuro';
-  if (loginThemeToggleBtn) loginThemeToggleBtn.textContent = themeLabel;
-  if (appThemeToggleBtn) appThemeToggleBtn.textContent = themeLabel;
+  const nextMode = colorMode === 'dark' ? 'light' : 'dark';
+  const themeLabel = nextMode === 'light' ? 'Ativar modo claro' : 'Ativar modo escuro';
+
+  [loginThemeToggleBtn, appThemeToggleBtn].filter(Boolean).forEach(button => {
+    button.innerHTML = THEME_ICONS[nextMode];
+    button.dataset.targetMode = nextMode;
+    button.setAttribute('aria-label', themeLabel);
+    button.setAttribute('title', themeLabel);
+  });
 }
 
 function populateFontThemes() {

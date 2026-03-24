@@ -20,7 +20,7 @@
 </head>
 <body>
   <section class="login-screen" id="login-screen">
-    <button class="theme-toggle global-theme-toggle" id="login-theme-toggle" type="button">Tema escuro</button>
+    <button class="theme-toggle global-theme-toggle" id="login-theme-toggle" type="button" aria-label="Alternar tema" title="Alternar tema"></button>
     <div class="login-shell">
       <div class="login-card login-card-minimal">
         <span class="login-badge">MyTasks</span>
@@ -48,20 +48,12 @@
       </div>
 
       <div class="header-actions">
-        <div class="header-status">
-          <span class="status-dot" aria-hidden="true"></span>
-          <div class="status-copy">
-            <span class="status-label">Firebase</span>
-            <span class="status-value" id="cloud-status">Aguardando autenticação</span>
-          </div>
-        </div>
-
         <label class="font-control" for="font-theme-select">
           <span>Fonte</span>
           <select id="font-theme-select" aria-label="Escolher estilo de fonte"></select>
         </label>
 
-        <button class="theme-toggle header-theme-toggle" id="app-theme-toggle" type="button">Tema escuro</button>
+        <button class="theme-toggle header-theme-toggle" id="app-theme-toggle" type="button" aria-label="Alternar tema" title="Alternar tema"></button>
 
         <div class="user-chip">
           <img class="user-avatar" id="header-user-photo" alt="Foto do usuário" hidden>
@@ -92,7 +84,6 @@
         <div class="page-meta">
           <div class="meta-pill">📅 <span id="date-label"></span></div>
           <div class="meta-pill">✅ <span id="done-count">0</span> concluídas</div>
-          <div class="meta-pill save-pill">💾 <span id="save-status">Aguardando sincronização</span></div>
           <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
           <div class="progress-label" id="progress-label">0%</div>
         </div>
@@ -159,6 +150,11 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <div hidden aria-hidden="true">
+    <span id="cloud-status">Aguardando autenticação</span>
+    <span id="save-status">Aguardando sincronização</span>
   </div>
 
   <script defer src="./scripts/firebase-config.js"></script>
