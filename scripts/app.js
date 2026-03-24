@@ -31,6 +31,22 @@ const FONT_THEMES = {
     display: "'Space Grotesk', sans-serif"
   }
 };
+const TASK_TYPES = {
+  task: { label: 'Tarefa' },
+  fix: { label: 'Correção' },
+  feature: { label: 'Feature' },
+  note: { label: 'Notas' }
+};
+const FILTER_OPTIONS = [
+  { value: 'all', label: 'Todas' },
+  { value: 'done', label: 'Resolvidas' },
+  { value: 'normal', label: 'Sem prioridade' },
+  { value: 'soon', label: 'A resolver' },
+  { value: 'urgent', label: 'Urgentes' },
+  { value: 'fix', label: 'Correção' },
+  { value: 'feature', label: 'Feature' },
+  { value: 'note', label: 'Notas' }
+];
 
 const STORAGE_KEY_PREFIX = getStorageKeyPrefix();
 const LEGACY_SCOPED_STORAGE_KEY = getLegacyScopedStorageKey();
@@ -41,11 +57,14 @@ const appRootEl = document.getElementById('app-root');
 const loginStatusEl = document.getElementById('login-status');
 const blocksEl = document.getElementById('blocks');
 const emptyStateEl = document.getElementById('empty-state');
+const emptyStateTextEl = document.getElementById('empty-state-text');
 const pageTitleEl = document.getElementById('page-title');
 const workspaceIntroEl = document.getElementById('workspace-intro');
 const welcomeBadgeEl = document.getElementById('welcome-badge');
 const emojiBtn = document.getElementById('emoji-btn');
 const emojiPicker = document.getElementById('emoji-picker');
+const filterChipsEl = document.getElementById('filter-chips');
+const clearFiltersBtn = document.getElementById('clear-filters-btn');
 const ftb = document.getElementById('floating-toolbar');
 const colorPopup = document.getElementById('color-popup');
 const doneCountEl = document.getElementById('done-count');
@@ -66,13 +85,14 @@ const headerUserEmailEl = document.getElementById('header-user-email');
 
 function createDefaultState() {
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     pageTitle: 'Minhas Tarefas',
     emoji: '📝',
     items: [],
     settings: {
       fontTheme: DEFAULT_FONT_THEME,
-      colorMode: readColorModePreference()
+      colorMode: readColorModePreference(),
+      activeFilter: 'all'
     },
     updatedAt: 0
   };
@@ -204,10 +224,19 @@ function normalizePageTitle(value) {
   return value.trim() ? value : createDefaultState().pageTitle;
 }
 
+function normalizeTaskType(taskType) {
+  return TASK_TYPES[taskType] ? taskType : 'task';
+}
+
+function normalizeFilter(filter) {
+  return FILTER_OPTIONS.some(option => option.value === filter) ? filter : 'all';
+}
+
 function normalizeSettings(raw) {
   return {
     fontTheme: FONT_THEMES[raw?.fontTheme] ? raw.fontTheme : DEFAULT_FONT_THEME,
-    colorMode: normalizeColorMode(raw?.colorMode || readColorModePreference())
+    colorMode: normalizeColorMode(raw?.colorMode || readColorModePreference()),
+    activeFilter: normalizeFilter(raw?.activeFilter)
   };
 }
 
@@ -354,7 +383,7 @@ function buildPersistedPayload() {
   const updatedAt = Date.now();
   state.updatedAt = updatedAt;
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     pageTitle: normalizePageTitle(state.pageTitle),
     emoji: state.emoji,
     items: state.items,
@@ -697,7 +726,7 @@ function readStoredState(key) {
 
 function normalizeState(raw) {
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     pageTitle: normalizePageTitle(raw?.pageTitle),
     emoji: typeof raw?.emoji === 'string' ? raw.emoji : createDefaultState().emoji,
     items: normalizeTopItems(Array.isArray(raw?.items) ? raw.items : []),
@@ -738,6 +767,7 @@ function normalizeItem(item, allowRich) {
     type: 'task',
     title: typeof item.title === 'string' ? item.title : '',
     note: typeof item.note === 'string' ? item.note : '',
+    taskType: normalizeTaskType(item.taskType),
     done: Boolean(item.done),
     priority: normalizePriority(item.priority),
     subitems: Array.isArray(item.subitems) ? item.subitems.map(normalizeSubitem).filter(Boolean) : [],
@@ -755,14 +785,15 @@ function normalizeSubitem(sub) {
   };
 }
 
-function createTask() {
+function createTask(seed = {}) {
   return {
     id: uid(),
     type: 'task',
     title: '',
     note: '',
-    done: false,
-    priority: 'normal',
+    taskType: normalizeTaskType(seed.taskType),
+    done: Boolean(seed.done),
+    priority: normalizePriority(seed.priority),
     subitems: [],
     children: []
   };
@@ -784,14 +815,6 @@ function walkTasks(items, callback, parentTask = null, level = 0) {
   });
 }
 
-function countTaskDescendants(task) {
-  let total = task.children.length;
-  task.children.forEach(child => {
-    total += countTaskDescendants(child);
-  });
-  return total;
-}
-
 function countAllTasks() {
   let total = 0;
   walkTasks(state.items, () => {
@@ -806,6 +829,24 @@ function countDoneTasks() {
     if (task.done) total += 1;
   });
   return total;
+}
+
+function getTaskSeedFromActiveFilter(filterValue = state.settings?.activeFilter) {
+  const activeFilter = normalizeFilter(filterValue);
+
+  if (activeFilter === 'normal' || activeFilter === 'soon' || activeFilter === 'urgent') {
+    return { priority: activeFilter };
+  }
+
+  if (activeFilter === 'fix' || activeFilter === 'feature' || activeFilter === 'note') {
+    return { taskType: activeFilter };
+  }
+
+  return {};
+}
+
+function getFilterOptionMeta(filterValue = state.settings?.activeFilter) {
+  return FILTER_OPTIONS.find(option => option.value === normalizeFilter(filterValue)) || FILTER_OPTIONS[0];
 }
 
 function findTopLevelItemIndex(id) {
@@ -859,7 +900,7 @@ function insertIntoList(list, item, afterId = null) {
 }
 
 function addTask(afterId = null, parentTaskId = null) {
-  const task = createTask();
+  const task = createTask(getTaskSeedFromActiveFilter());
 
   if (!parentTaskId) {
     insertIntoList(state.items, task, afterId);
@@ -926,16 +967,67 @@ function makeIconButton({ title, className = 'ba-btn', onClick, svg }) {
   return btn;
 }
 
-function updateMeta() {
+function setActiveFilter(filterValue) {
+  const normalizedFilter = normalizeFilter(filterValue);
+  if (normalizedFilter === state.settings.activeFilter) return;
+  state.settings.activeFilter = normalizedFilter;
+  render();
+  markDirty();
+}
+
+function renderFilterChips() {
+  if (!filterChipsEl) return;
+
+  const activeFilter = normalizeFilter(state.settings?.activeFilter);
+  filterChipsEl.innerHTML = '';
+
+  FILTER_OPTIONS.forEach(option => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'filter-chip' + (option.value === activeFilter ? ' active' : '');
+    chip.dataset.filter = option.value;
+    chip.dataset.filterTone = option.value;
+
+    if (option.value !== 'all') {
+      const dot = document.createElement('span');
+      dot.className = 'filter-chip-dot';
+      chip.appendChild(dot);
+    }
+
+    const label = document.createElement('span');
+    label.textContent = option.label;
+    chip.appendChild(label);
+
+    chip.addEventListener('click', () => {
+      setActiveFilter(option.value);
+    });
+
+    filterChipsEl.appendChild(chip);
+  });
+
+  if (clearFiltersBtn) {
+    clearFiltersBtn.hidden = activeFilter === 'all';
+  }
+}
+
+function updateMeta(renderableItems = state.items) {
   const total = countAllTasks();
   const done = countDoneTasks();
   const percent = total ? Math.round((done / total) * 100) : 0;
+  const activeFilter = normalizeFilter(state.settings?.activeFilter);
+  const activeFilterMeta = getFilterOptionMeta(activeFilter);
 
   doneCountEl.textContent = done;
   headerSubEl.textContent = total + (total === 1 ? ' tarefa' : ' tarefas');
   progressFillEl.style.width = percent + '%';
   progressLabelEl.textContent = percent + '%';
-  emptyStateEl.style.display = state.items.length ? 'none' : 'block';
+  emptyStateEl.style.display = renderableItems.length ? 'none' : 'block';
+
+  if (!emptyStateTextEl) return;
+
+  emptyStateTextEl.innerHTML = activeFilter === 'all'
+    ? 'Nenhuma tarefa ainda.<br>Crie sua primeira prioridade abaixo.'
+    : 'Nenhum item em <strong>' + activeFilterMeta.label + '</strong> agora.<br>Troque o filtro ou crie uma nova tarefa.';
 }
 
 function setupDrag(block, context) {
@@ -1025,6 +1117,81 @@ function getTaskVisualState(task) {
   return normalizePriority(task.priority);
 }
 
+function taskMatchesActiveFilter(task, filterValue = state.settings?.activeFilter) {
+  const activeFilter = normalizeFilter(filterValue);
+
+  if (activeFilter === 'all') return true;
+  if (activeFilter === 'done') return task.done;
+  if (activeFilter === 'normal' || activeFilter === 'soon' || activeFilter === 'urgent') {
+    return !task.done && getTaskVisualState(task) === activeFilter;
+  }
+
+  return normalizeTaskType(task.taskType) === activeFilter;
+}
+
+function filterTaskTree(task, filterValue = state.settings?.activeFilter) {
+  const visibleChildren = task.children
+    .map(child => filterTaskTree(child, filterValue))
+    .filter(Boolean);
+
+  if (!taskMatchesActiveFilter(task, filterValue) && !visibleChildren.length) {
+    return null;
+  }
+
+  return {
+    task,
+    children: visibleChildren
+  };
+}
+
+function buildTaskTree(task) {
+  return {
+    task,
+    children: task.children.map(child => buildTaskTree(child))
+  };
+}
+
+function getRenderableItems() {
+  const activeFilter = normalizeFilter(state.settings?.activeFilter);
+
+  if (activeFilter === 'all') {
+    return state.items.map(item => {
+      if (item.type === 'task') {
+        return {
+          kind: 'task',
+          node: buildTaskTree(item)
+        };
+      }
+
+      return {
+        kind: 'rich',
+        item
+      };
+    });
+  }
+
+  return state.items
+    .map(item => {
+      if (item.type !== 'task') return null;
+      const node = filterTaskTree(item, activeFilter);
+      return node
+        ? {
+            kind: 'task',
+            node
+          }
+        : null;
+    })
+    .filter(Boolean);
+}
+
+function countVisibleDescendants(node) {
+  let total = node.children.length;
+  node.children.forEach(child => {
+    total += countVisibleDescendants(child);
+  });
+  return total;
+}
+
 function getTaskStatusText(task) {
   const visualState = getTaskVisualState(task);
   if (visualState === 'done') return 'Resolvida';
@@ -1098,8 +1265,9 @@ function buildSubitems(task) {
   return fragment;
 }
 
-function buildTaskElement(task, options = {}) {
+function buildTaskElement(node, options = {}) {
   const { parentTask = null, level = 0 } = options;
+  const task = node.task;
 
   const wrapper = document.createElement('div');
   wrapper.className = 'task-node';
@@ -1152,12 +1320,40 @@ function buildTaskElement(task, options = {}) {
   const metaRow = document.createElement('div');
   metaRow.className = 'task-meta-row';
 
-  const tag = document.createElement('span');
-  tag.className = 'task-tag';
-  tag.textContent = parentTask ? '↳ Tarefa filha' : 'Tarefa pai';
-  metaRow.appendChild(tag);
+  const taskTypeControl = document.createElement('label');
+  const normalizedTaskType = normalizeTaskType(task.taskType);
+  taskTypeControl.className = 'task-type-control task-type-' + normalizedTaskType;
 
-  const childrenTotal = countTaskDescendants(task);
+  const taskTypeSwatch = document.createElement('span');
+  taskTypeSwatch.className = 'task-type-swatch';
+  taskTypeControl.appendChild(taskTypeSwatch);
+
+  const taskTypeSelect = document.createElement('select');
+  taskTypeSelect.className = 'task-type-select';
+
+  Object.entries(TASK_TYPES).forEach(([value, meta]) => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = meta.label;
+    taskTypeSelect.appendChild(option);
+  });
+
+  taskTypeSelect.value = normalizedTaskType;
+  taskTypeSelect.addEventListener('change', event => {
+    task.taskType = normalizeTaskType(event.target.value);
+    markDirty();
+    render();
+  });
+
+  taskTypeControl.appendChild(taskTypeSelect);
+  metaRow.appendChild(taskTypeControl);
+
+  const hierarchyTag = document.createElement('span');
+  hierarchyTag.className = 'task-tag';
+  hierarchyTag.textContent = parentTask ? 'Tarefa filha' : 'Tarefa raiz';
+  metaRow.appendChild(hierarchyTag);
+
+  const childrenTotal = countVisibleDescendants(node);
   if (childrenTotal) {
     const counter = document.createElement('span');
     counter.className = 'task-children-counter';
@@ -1260,11 +1456,11 @@ function buildTaskElement(task, options = {}) {
   wrapper.appendChild(block);
   wrapper.appendChild(addChildBtn);
 
-  if (task.children.length) {
+  if (node.children.length) {
     const childrenContainer = document.createElement('div');
     childrenContainer.className = 'children-container';
 
-    task.children.forEach(childTask => {
+    node.children.forEach(childTask => {
       childrenContainer.appendChild(buildTaskElement(childTask, {
         parentTask: task,
         level: level + 1
@@ -1362,12 +1558,15 @@ function render(focusTarget = null) {
   applyAppearance();
   updateWorkspaceCopy();
   blocksEl.innerHTML = '';
+  renderFilterChips();
 
-  state.items.forEach(item => {
-    if (item.type === 'task') {
-      blocksEl.appendChild(buildTaskElement(item, { parentTask: null, level: 0 }));
+  const renderableItems = getRenderableItems();
+
+  renderableItems.forEach(item => {
+    if (item.kind === 'task') {
+      blocksEl.appendChild(buildTaskElement(item.node, { parentTask: null, level: 0 }));
     } else {
-      blocksEl.appendChild(buildRichElement(item));
+      blocksEl.appendChild(buildRichElement(item.item));
     }
   });
 
@@ -1375,7 +1574,7 @@ function render(focusTarget = null) {
   pageTitleEl.value = state.pageTitle;
   emojiBtn.textContent = state.emoji;
   autoResize(pageTitleEl);
-  updateMeta();
+  updateMeta(renderableItems);
 
   if (focusTarget) {
     requestAnimationFrame(() => {
@@ -1610,6 +1809,12 @@ function initEvents() {
     applyAppearance();
     markDirty();
   });
+
+  if (clearFiltersBtn) {
+    clearFiltersBtn.addEventListener('click', () => {
+      setActiveFilter('all');
+    });
+  }
 
   [loginThemeToggleBtn, appThemeToggleBtn].filter(Boolean).forEach(button => {
     button.addEventListener('click', event => {

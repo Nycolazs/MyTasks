@@ -92,6 +92,14 @@
           <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
           <div class="progress-label" id="progress-label">0%</div>
         </div>
+
+        <section class="filter-shell" aria-label="Filtros de tarefas">
+          <div class="filter-shell-header">
+            <span class="filter-shell-title">Filtrar tarefas</span>
+            <button class="filter-reset-btn" id="clear-filters-btn" type="button" hidden>Limpar filtro</button>
+          </div>
+          <div class="filter-chips" id="filter-chips"></div>
+        </section>
       </section>
 
       <section class="workspace-canvas">
@@ -139,7 +147,7 @@
 
         <div class="empty-state" id="empty-state">
           <div class="empty-state-icon">🌿</div>
-          <p>Nenhuma tarefa ainda.<br>Crie sua primeira prioridade abaixo.</p>
+          <p id="empty-state-text">Nenhuma tarefa ainda.<br>Crie sua primeira prioridade abaixo.</p>
         </div>
 
         <div class="action-row">
